@@ -19,7 +19,7 @@ jobs:
         distribution: 'temurin'
     
     - name: Set up Android SDK
-      uses: android-actions/setup-android@v3[citation:4]
+      uses: android-actions/setup-android@v4[citation:4]
       # Этот Action автоматически скачает SDK и примет все необходимые лицензии[citation:1]
     
     - name: Install Buildozer and dependencies
