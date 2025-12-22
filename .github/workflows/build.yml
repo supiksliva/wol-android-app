@@ -41,26 +41,29 @@ jobs:
     
     - name: Install Python dependencies
       run: |
-        pip install --upgrade pip wheel setuptools
-        pip install buildozer cython virtualenv
+        pip install buildozer cython
     
-    - name: Initialize Buildozer (download dependencies)
+    - name: Accept Android SDK licenses
       run: |
-        buildozer init 2>/dev/null || true
-        buildozer android update 2>/dev/null || true
-      env:
-        BUILD_WITH_COLORS: 0
+        mkdir -p ~/.android
+        echo "### User Sources for Android SDK Manager" > ~/.android/repositories.cfg
+        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e" > ~/.android/licenses/android-sdk-license
+        echo -e "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.android/licenses/android-sdk-preview-license
     
-    - name: Build APK (skip clean on first run)
+    - name: Build APK
       run: |
-        # Пропускаем clean на первом запуске, т.к. python-for-android еще не скачан
-        buildozer android debug || buildozer android debug
+        # Принудительно принимаем все лицензии
+        yes | buildozer android clean 2>/dev/null || true
+        yes | buildozer android debug 2>/dev/null || true
+        
+        # Если не сработало, пробуем с переменной окружения
+        export BUILD_WITH_COLORS=0
+        export BUILD_FOR_RELEASE=0
+        buildozer android debug
       env:
-        BUILD_WITH_COLORS: 0
-        # Ускоряем сборку
-        BUILD_FOR_RELEASE: 0
-        # Пропускаем некоторые проверки
-        BUILD_SKIP_PREFLIGHT_CHECK: 1
+        # Принудительное принятие лицензий
+        ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
+        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
