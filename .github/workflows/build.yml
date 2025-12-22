@@ -26,7 +26,7 @@ jobs:
     - name: Build APK
       run: buildozer android debug
     - name: Upload APK
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: wol-app-apk
         path: bin/*.apk
