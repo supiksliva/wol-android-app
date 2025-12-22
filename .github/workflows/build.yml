@@ -9,102 +9,96 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Android SDK
+    - name: Setup Android SDK with pre-accepted licenses
       run: |
+        # 1. Устанавливаем системные зависимости
         sudo apt-get update
         sudo apt-get install -y \
           python3-pip \
+          python3-venv \
           git \
           zip \
           unzip \
           openjdk-17-jdk \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          cmake \
+          libffi-dev \
+          libssl-dev \
           wget \
           unzip
         
-        # Устанавливаем Android SDK
+        # 2. Скачиваем Android Command Line Tools
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
         mkdir -p ~/android-sdk
         unzip -q commandlinetools-linux-9477386_latest.zip -d ~/android-sdk
         mv ~/android-sdk/cmdline-tools ~/android-sdk/latest
         
+        # 3. Добавляем в PATH
         echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
         echo "PATH=~/android-sdk/latest/bin:$PATH" >> $GITHUB_ENV
         
-        # Принимаем лицензии и устанавливаем компоненты
+        # 4. Автоматически принимаем ВСЕ лицензии
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
         
-        yes | ~/android-sdk/latest/bin/sdkmanager --sdk_root=~/android-sdk \
-          "platform-tools" \
-          "platforms;android-33" \
-          "build-tools;33.0.0" 2>&1 | tail -30
+        # 5. Устанавливаем необходимые компоненты С ДРУГОЙ ВЕРСИЕЙ
+        echo "y" | ~/android-sdk/latest/bin/sdkmanager --sdk_root=~/android-sdk "platform-tools" "platforms;android-33" "build-tools;30.0.3" 2>&1 | tail -20
     
     - name: Install Buildozer
       run: |
         pip install buildozer cython
     
-    - name: Build APK with full debug
-      id: build
+    - name: Configure Buildozer to use our SDK
       run: |
-        echo "=== STARTING BUILDOZER (LOG LEVEL 2) ==="
+        # Создаем конфиг для Buildozer
+        mkdir -p ~/.buildozer
+        echo "[app]" > ~/.buildozer/config.ini
+        echo "android.sdk_path = ~/android-sdk" >> ~/.buildozer/config.ini
+    
+    - name: Build APK with verification
+      id: build-step
+      run: |
+        # Ключевая строка: используем --yes для автоматического принятия
+        buildozer android debug --yes 2>&1 | tee build.log
         
-        # Очищаем предыдущие сборки
-        rm -rf .buildozer bin 2>/dev/null || true
-        
-        # Запускаем с полным логом
-        buildozer android debug 2>&1 | tee full_build.log
-        
-        # Анализируем результат
-        echo "=== BUILD ANALYSIS ==="
-        
-        # 1. Проверяем папку bin
-        if [ -d "bin" ]; then
-          echo "Found bin directory:"
-          ls -la bin/
-          APK_COUNT=$(ls -1 bin/*.apk 2>/dev/null | wc -l)
-          echo "APK files found: $APK_COUNT"
-        else
-          echo "bin directory NOT created"
-        fi
-        
-        # 2. Ищем ошибки в логе
-        echo "=== SEARCHING FOR ERRORS ==="
-        ERROR_LINES=$(grep -i "error\|failed\|exception\|not found\|missing" full_build.log | wc -l)
-        echo "Lines with errors: $ERROR_LINES"
-        
-        if [ $ERROR_LINES -gt 0 ]; then
-          echo "First 10 errors:"
-          grep -i "error\|failed\|exception\|not found\|missing" full_build.log | head -10
-        fi
-        
-        # 3. Показываем последние строки лога
-        echo "=== LAST 50 LINES OF LOG ==="
-        tail -50 full_build.log
-        
-        # 4. Проверяем создан ли APK
+        # Проверяем создался ли APK файл
+        echo "=== CHECKING FOR APK FILE ==="
         if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK FILE CREATED SUCCESSFULLY"
-          ls -lh bin/*.apk
+          echo "✅ APK file created successfully"
+          echo "APK file:"
+          ls -la bin/*.apk
+          echo "apk_exists=true" >> $GITHUB_OUTPUT
         else
-          echo "❌ NO APK FILE CREATED"
-          echo "Build failed silently. Check full_build.log for details."
-          # Завершаем с ошибкой, чтобы workflow показал проблему
-          exit 1
+          echo "❌ ERROR: APK file NOT created!"
+          echo "=== SHOWING BUILD ERRORS ==="
+          # Ищем ошибки в логе
+          grep -i "error\|failed\|not found\|missing\|rejected" build.log | head -20
+          echo "=== LAST 30 LINES OF LOG ==="
+          tail -30 build.log
+          echo "apk_exists=false" >> $GITHUB_OUTPUT
+          exit 1  # Завершаем с ошибкой
         fi
       env:
-        BUILDOZER_LOG_LEVEL: 2
+        # Форсируем принятие лицензий
+        ACCEPT_ALL_ANDROID_LICENSES: 1
         ANDROID_SDK_ROOT: ~/android-sdk
+        BUILD_WITH_COLORS: 0
     
     - name: Upload APK
-      if: steps.build.outcome == 'success'
+      if: steps.build-step.outputs.apk_exists == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: android-apk
+        name: wol-android-apk
         path: bin/*.apk
     
-    - name: Upload build log
-      if: always()
+    - name: Upload build log on failure
+      if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: build-debug-log
-        path: full_build.log
+        name: build-failure-log
+        path: build.log
