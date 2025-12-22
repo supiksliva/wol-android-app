@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK - Debug Version
 
 on: [push, workflow_dispatch]
 
@@ -9,70 +9,82 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Android SDK with pre-accepted licenses
+    - name: Install system dependencies
       run: |
-        # 1. Устанавливаем системные зависимости
         sudo apt-get update
         sudo apt-get install -y \
           python3-pip \
-          python3-venv \
           git \
           zip \
           unzip \
           openjdk-17-jdk \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          cmake \
-          libffi-dev \
-          libssl-dev \
-          wget \
-          unzip
-        
-        # 2. Скачиваем Android Command Line Tools
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-        mkdir -p ~/android-sdk
-        unzip -q commandlinetools-linux-9477386_latest.zip -d ~/android-sdk
-        mv ~/android-sdk/cmdline-tools ~/android-sdk/latest
-        
-        # 3. Добавляем в PATH
-        echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
-        echo "PATH=~/android-sdk/latest/bin:$PATH" >> $GITHUB_ENV
-        
-        # 4. Автоматически принимаем ВСЕ лицензии
-        mkdir -p ~/.android
-        touch ~/.android/repositories.cfg
-        
-        # 5. Устанавливаем необходимые компоненты С ДРУГОЙ ВЕРСИЕЙ
-        echo "y" | ~/android-sdk/latest/bin/sdkmanager --sdk_root=~/android-sdk "platform-tools" "platforms;android-33" "build-tools;30.0.3" 2>&1 | tail -20
+          wget
     
     - name: Install Buildozer
       run: |
-        pip install buildozer cython
+        pip install buildozer==1.5.0 cython==0.29.36
     
-    - name: Configure Buildozer to use our SDK
+    - name: Show environment info
       run: |
-        # Создаем конфиг для Buildozer
-        mkdir -p ~/.buildozer
-        echo "[app]" > ~/.buildozer/config.ini
-        echo "android.sdk_path = ~/android-sdk" >> ~/.buildozer/config.ini
+        echo "=== SYSTEM INFO ==="
+        python3 --version
+        pip --version
+        java -version
+        echo "=== DIRECTORY STRUCTURE ==="
+        find . -type f -name "*.py" -o -name "*.spec" | head -20
     
-    - name: Build APK
+    - name: Run Buildozer with detailed logging
+      id: buildozer-run
+      continue-on-error: true  # Продолжить даже если сборка упадет
       run: |
-        # Ключевая строка: используем --yes для автоматического принятия
-        buildozer android debug --yes 2>&1 | tail -100
-      env:
-        # Форсируем принятие лицензий
-        ACCEPT_ALL_ANDROID_LICENSES: 1
-        ANDROID_SDK_ROOT: ~/android-sdk
-        BUILD_WITH_COLORS: 0
+        echo "=== STARTING BUILDOZER ==="
+        
+        # 1. Очистить предыдущие сборки
+        rm -rf .buildozer bin 2>/dev/null || true
+        
+        # 2. Запустить Buildozer с детальным логом
+        # Сохраняем вывод в файл
+        set -o pipefail
+        buildozer android debug 2>&1 | tee full_build.log
+        
+        # 3. Проверить результат
+        BUILD_EXIT_CODE=$?
+        echo "Buildozer exit code: $BUILD_EXIT_CODE"
+        
+        # 4. Поискать APK файлы
+        echo "=== SEARCHING FOR APK FILES ==="
+        find . -name "*.apk" -type f 2>/dev/null
+        
+        # 5. Проверить папку bin
+        if [ -d "bin" ]; then
+          echo "=== CONTENTS OF bin/ ==="
+          ls -la bin/
+        else
+          echo "bin/ directory does not exist"
+        fi
+        
+        # 6. Показать последние строки лога
+        echo "=== LAST 150 LINES OF BUILD LOG ==="
+        tail -150 full_build.log
+        
+        # 7. Показать ошибки если есть
+        echo "=== ERRORS IN LOG ==="
+        grep -i "error\|failed\|exception\|not found" full_build.log | head -30
+        
+        exit $BUILD_EXIT_CODE
     
-    - name: Upload APK
-      if: success()
+    - name: Upload build logs
+      if: always()  # Загрузить логи всегда, даже при ошибке
       uses: actions/upload-artifact@v4
       with:
-        name: wol-android-apk
+        name: build-logs
+        path: |
+          full_build.log
+          .buildozer/logs/
+    
+    - name: Upload APK if exists
+      if: steps.buildozer-run.outcome == 'success'
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-apk
         path: bin/*.apk
