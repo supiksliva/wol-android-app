@@ -1,33 +1,20 @@
 name: Build Android APK
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:  # Для ручного запуска
+on: [push, workflow_dispatch]
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. Получить код
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    # 2. Настроить Python
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-        
-    # 3. Установить системные зависимости
+    - uses: actions/checkout@v4
+    
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           python3-pip \
           python3-venv \
-          build-essential \
           git \
           zip \
           unzip \
@@ -40,29 +27,21 @@ jobs:
           libncursesw5-dev \
           cmake \
           libffi-dev \
-          libssl-dev \
-          ninja-build
-          
-    # 4. Установить Buildozer
+          libssl-dev
+    
     - name: Install Buildozer
       run: |
-        pip install --upgrade pip
-        pip install buildozer cython virtualenv
-        
-    # 5. Собрать APK
-    - name: Build APK with Buildozer
+        pip install buildozer==1.5.0 cython==0.29.36
+    
+    - name: Build APK
       run: |
-        buildozer android clean
+        # Только сборка, без clean
         buildozer android debug
       env:
-        # Оптимизации
         BUILD_WITH_COLORS: 0
-        BUILD_FOR_RELEASE: 0
-        
-    # 6. Загрузить APK
-    - name: Upload APK artifact
+    
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: wol-android-apk
+        name: wol-apk
         path: bin/*.apk
-        retention-days: 7
