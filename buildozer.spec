@@ -1,57 +1,44 @@
 [app]
 
 # Название приложения
-title = WoL Remote Control
+title = WoL Remote
 
-# Имя пакета (домен в обратном порядке)
-package.name = com.yourname.wolremote
-
-# Домен (для Google Play)
-package.domain = com.yourname
+# Имя пакета
+package.name = wolremote
+package.domain = com.github
 
 # Исходный код
 source.dir = .
-
-# Главный файл приложения
-source.include_exts = py,png,jpg,kv,atlas,json
+source.include_exts = py,png,jpg,kv,atlas,json,txt
 
 # Версия
 version = 1.0
 
-# Требуемые разрешения
-android.permissions = INTERNET,ACCESS_NETWORK_STATE,ACCESS_WIFI_STATE
+# Автор
+author = GitHub User
 
-# Особенности Android
-android.api = 30
+# Требуемые библиотеки Python
+requirements = python3,kivy==2.2.1,requests==2.31.0
+
+# Android настройки
+android.api = 33
 android.minapi = 21
-android.ndk = 23b
-android.sdk = 31
+android.ndk = 25b
 
-# Архитектура
-android.arch = arm64-v8a,armeabi-v7a
+# Используйте новое название android.archs вместо старого android.arch
+android.archs = arm64-v8a,armeabi-v7a
 
-# Ориентация
+# Разрешения Android
+android.permissions = INTERNET
+
+# Ориентация экрана
 orientation = portrait
 
 # Полноэкранный режим
 fullscreen = 0
 
-# Виджет
-android.meta_data = android.appwidget.provider=widget_provider.xml
-
-# Иконка
-icon.filename = assets/icon.png
-
-# Зависимости
-requirements = python3,kivy,requests
-
-# Пакеты для включения
-android.add_packages =
-
-# Исключения
-android.ignore_path =
+# Ускорение сборки
+android.accept_sdk_license = True
 
 [buildozer]
-
-# Логи
 log_level = 2
