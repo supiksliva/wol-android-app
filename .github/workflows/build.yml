@@ -1,42 +1,68 @@
 name: Build Android APK
-on: [push, workflow_dispatch]
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Для ручного запуска
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
     
+    steps:
+    # 1. Получить код
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    # 2. Настроить Python
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
         python-version: '3.10'
-    
-    - name: Set up Java
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-    
-    - name: Set up Android SDK
-      uses: android-actions/setup-android@v4[citation:4]
-      # Этот Action автоматически скачает SDK и примет все необходимые лицензии[citation:1]
-    
-    - name: Install Buildozer and dependencies
+        
+    # 3. Установить системные зависимости
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-pip \
+          python3-venv \
+          build-essential \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          cmake \
+          libffi-dev \
+          libssl-dev \
+          ninja-build
+          
+    # 4. Установить Buildozer
+    - name: Install Buildozer
       run: |
         pip install --upgrade pip
-        pip install buildozer cython
-    
+        pip install buildozer cython virtualenv
+        
+    # 5. Собрать APK
     - name: Build APK with Buildozer
       run: |
         buildozer android clean
         buildozer android debug
       env:
+        # Оптимизации
         BUILD_WITH_COLORS: 0
-    
-    - name: Upload APK
+        BUILD_FOR_RELEASE: 0
+        
+    # 6. Загрузить APK
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: wol-app-apk
+        name: wol-android-apk
         path: bin/*.apk
         retention-days: 7
