@@ -4,7 +4,6 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
     - uses: actions/checkout@v3
     
@@ -17,51 +16,66 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-        python3-pip \
-        git \
-        zip \
-        unzip \
-        openjdk-17-jdk \
-        autoconf \
-        libtool \
-        pkg-config \
-        zlib1g-dev \
-        libncurses5-dev \
-        wget
+          python3-pip \
+          build-essential \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          cmake \
+          libffi-dev \
+          libssl-dev \
+          ninja-build \
+          curl \
+          unzip \
+          ccache
     
-    - name: Install Buildozer
+    - name: Install Buildozer and dependencies
       run: |
-        pip install buildozer cython
-    
-    - name: Accept Android SDK licenses
-      run: |
-        mkdir -p ~/.android
-        touch ~/.android/repositories.cfg
-        # Автоматически принимаем все лицензии
-        yes | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
-        echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --licenses || true
+        pip install --upgrade pip wheel setuptools
+        pip install buildozer cython virtualenv
     
     - name: Build APK with Buildozer
       run: |
-        # Устанавливаем переменные окружения для автоматического принятия лицензий
-        export ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
-        mkdir -p $ANDROID_SDK_ROOT/licenses
-        echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_SDK_ROOT/licenses/android-sdk-license
-        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_SDK_ROOT/licenses/android-sdk-preview-license
-        echo -e "\nd56f5187479451eabf01fb78af6dfcb131a6481e" > $ANDROID_SDK_ROOT/licenses/android-sdk-arm-dbt-license
+        # Инициализация buildozer
+        buildozer init 2>/dev/null || true
         
-        # Запускаем сборку с ключом --verbose для отладки
-        buildozer android clean
-        buildozer android debug 2>&1 | tail -100
+        # Собрать APK (добавляем yes для автоматического принятия лицензий)
+        yes | buildozer android debug 2>&1 | tail -100
+        
+        # Проверить результат
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "✅ APK успешно собран!"
+          ls -la bin/*.apk
+        else
+          echo "❌ Сборка APK не удалась"
+          exit 1
+        fi
       env:
-        # Принимаем лицензии автоматически
-        ANDROID_SDK_HOME: /home/runner/.android
-        # Указываем конкретную версию Android SDK
-        ANDROID_SDK_VERSION: "33"
+        # Ключевые переменные для ускорения
+        BUILD_WITH_COLORS: 1
+        USE_CCACHE: 1
+        CCACHE_DIR: /tmp/ccache
     
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: wol-app-apk
         path: bin/*.apk
+        retention-days: 7
+    
+    - name: Upload build logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-logs
+        path: |
+          .buildozer/
         retention-days: 7
