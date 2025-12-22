@@ -5,65 +5,34 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10'
     
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          python3-pip \
-          python3-dev \
-          python3-venv \
-          build-essential \
-          git \
-          wget \
-          curl \
-          unzip \
-          openjdk-17-jdk \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          cmake \
-          libffi-dev \
-          libssl-dev \
-          ninja-build \
-          ccache \
-          libxml2-dev \
-          libxslt1-dev
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
     
-    - name: Install Python dependencies
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3[citation:4]
+      # Этот Action автоматически скачает SDK и примет все необходимые лицензии[citation:1]
+    
+    - name: Install Buildozer and dependencies
       run: |
+        pip install --upgrade pip
         pip install buildozer cython
     
-    - name: Accept Android SDK licenses
+    - name: Build APK with Buildozer
       run: |
-        mkdir -p ~/.android
-        echo "### User Sources for Android SDK Manager" > ~/.android/repositories.cfg
-        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e" > ~/.android/licenses/android-sdk-license
-        echo -e "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.android/licenses/android-sdk-preview-license
-    
-    - name: Build APK
-      run: |
-        # Принудительно принимаем все лицензии
-        yes | buildozer android clean 2>/dev/null || true
-        yes | buildozer android debug 2>/dev/null || true
-        
-        # Если не сработало, пробуем с переменной окружения
-        export BUILD_WITH_COLORS=0
-        export BUILD_FOR_RELEASE=0
+        buildozer android clean
         buildozer android debug
       env:
-        # Принудительное принятие лицензий
-        ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
-        ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
+        BUILD_WITH_COLORS: 0
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
