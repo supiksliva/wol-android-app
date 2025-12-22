@@ -1,28 +1,37 @@
 [app]
-title = WoL Remote Control
-package.name = wolremote
-package.domain = org.example
 
+# Название приложения
+title = WoL Remote
+
+# Имя пакета
+package.name = wolremote
+package.domain = com.github
+
+# Исходный код
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 
+# Версия
 version = 1.0
-requirements = python3,kivy==2.2.0,requests
 
-# Упрощаем архитектуру для первой сборки
-android.arch = arm64-v8a  # или armeabi-v7a
+# Требуемые библиотеки (минимальный набор для начала)
+requirements = python3,kivy==2.1.0
 
-android.api = 31
+# Android настройки
+android.api = 33
 android.minapi = 21
-android.sdk = 31
+android.sdk = 33
 android.ndk = 25b
 android.ndk_api = 21
 
-# Базовые разрешения
+# Используйте android.archs вместо android.arch
+android.archs = arm64-v8a
+
+# Разрешения
 android.permissions = INTERNET
 
-# Отключаем некоторые проверки для ускорения
-android.skip_update = False
+# Ориентация
+orientation = portrait
 
-[buildozer]
+# Логирование
 log_level = 2
