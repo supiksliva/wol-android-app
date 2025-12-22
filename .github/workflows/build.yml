@@ -1,26 +1,78 @@
 name: Build Android APK
+
 on: [push, workflow_dispatch]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-pip \
-            git \
-            zip \
-            unzip \
-            openjdk-17-jdk
-      - name: Install Buildozer
-        run: pip install buildozer cython
-      - name: Build APK (Accept Licenses Automatically)
-        run: |
-          # 这行命令会自动处理所有许可证提问
-          yes | buildozer android debug
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wol-apk
-          path: bin/*.apk
+    - uses: actions/checkout@v4
+    
+    - name: Setup Android SDK with pre-accepted licenses
+      run: |
+        # 1. Устанавливаем системные зависимости
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-pip \
+          python3-venv \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          cmake \
+          libffi-dev \
+          libssl-dev \
+          wget \
+          unzip
+        
+        # 2. Скачиваем Android Command Line Tools
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        mkdir -p ~/android-sdk
+        unzip -q commandlinetools-linux-9477386_latest.zip -d ~/android-sdk
+        mv ~/android-sdk/cmdline-tools ~/android-sdk/latest
+        
+        # 3. Добавляем в PATH
+        echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
+        echo "PATH=~/android-sdk/latest/bin:$PATH" >> $GITHUB_ENV
+        
+        # 4. Автоматически принимаем ВСЕ лицензии
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
+        
+        # 5. Устанавливаем необходимые компоненты С ДРУГОЙ ВЕРСИЕЙ
+        echo "y" | ~/android-sdk/latest/bin/sdkmanager --sdk_root=~/android-sdk "platform-tools" "platforms;android-33" "build-tools;30.0.3" 2>&1 | tail -20
+    
+    - name: Install Buildozer
+      run: |
+        pip install buildozer cython
+    
+    - name: Configure Buildozer to use our SDK
+      run: |
+        # Создаем конфиг для Buildozer
+        mkdir -p ~/.buildozer
+        echo "[app]" > ~/.buildozer/config.ini
+        echo "android.sdk_path = ~/android-sdk" >> ~/.buildozer/config.ini
+    
+    - name: Build APK
+      run: |
+        # Ключевая строка: используем --yes для автоматического принятия
+        buildozer android debug --yes 2>&1 | tail -100
+      env:
+        # Форсируем принятие лицензий
+        ACCEPT_ALL_ANDROID_LICENSES: 1
+        ANDROID_SDK_ROOT: ~/android-sdk
+        BUILD_WITH_COLORS: 0
+    
+    - name: Upload APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: wol-android-apk
+        path: bin/*.apk
