@@ -1,4 +1,4 @@
-name: Build Android APK - Debug Version
+name: Build Android APK
 
 on: [push, workflow_dispatch]
 
@@ -9,7 +9,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Install system dependencies
+    - name: Setup Android SDK
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -18,73 +18,93 @@ jobs:
           zip \
           unzip \
           openjdk-17-jdk \
-          wget
+          wget \
+          unzip
+        
+        # Устанавливаем Android SDK
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        mkdir -p ~/android-sdk
+        unzip -q commandlinetools-linux-9477386_latest.zip -d ~/android-sdk
+        mv ~/android-sdk/cmdline-tools ~/android-sdk/latest
+        
+        echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
+        echo "PATH=~/android-sdk/latest/bin:$PATH" >> $GITHUB_ENV
+        
+        # Принимаем лицензии и устанавливаем компоненты
+        mkdir -p ~/.android
+        touch ~/.android/repositories.cfg
+        
+        yes | ~/android-sdk/latest/bin/sdkmanager --sdk_root=~/android-sdk \
+          "platform-tools" \
+          "platforms;android-33" \
+          "build-tools;33.0.0" 2>&1 | tail -30
     
     - name: Install Buildozer
       run: |
-        pip install buildozer==1.5.0 cython==0.29.36
+        pip install buildozer cython
     
-    - name: Show environment info
+    - name: Build APK with full debug
+      id: build
       run: |
-        echo "=== SYSTEM INFO ==="
-        python3 --version
-        pip --version
-        java -version
-        echo "=== DIRECTORY STRUCTURE ==="
-        find . -type f -name "*.py" -o -name "*.spec" | head -20
-    
-    - name: Run Buildozer with detailed logging
-      id: buildozer-run
-      continue-on-error: true  # Продолжить даже если сборка упадет
-      run: |
-        echo "=== STARTING BUILDOZER ==="
+        echo "=== STARTING BUILDOZER (LOG LEVEL 2) ==="
         
-        # 1. Очистить предыдущие сборки
+        # Очищаем предыдущие сборки
         rm -rf .buildozer bin 2>/dev/null || true
         
-        # 2. Запустить Buildozer с детальным логом
-        # Сохраняем вывод в файл
-        set -o pipefail
+        # Запускаем с полным логом
         buildozer android debug 2>&1 | tee full_build.log
         
-        # 3. Проверить результат
-        BUILD_EXIT_CODE=$?
-        echo "Buildozer exit code: $BUILD_EXIT_CODE"
+        # Анализируем результат
+        echo "=== BUILD ANALYSIS ==="
         
-        # 4. Поискать APK файлы
-        echo "=== SEARCHING FOR APK FILES ==="
-        find . -name "*.apk" -type f 2>/dev/null
-        
-        # 5. Проверить папку bin
+        # 1. Проверяем папку bin
         if [ -d "bin" ]; then
-          echo "=== CONTENTS OF bin/ ==="
+          echo "Found bin directory:"
           ls -la bin/
+          APK_COUNT=$(ls -1 bin/*.apk 2>/dev/null | wc -l)
+          echo "APK files found: $APK_COUNT"
         else
-          echo "bin/ directory does not exist"
+          echo "bin directory NOT created"
         fi
         
-        # 6. Показать последние строки лога
-        echo "=== LAST 150 LINES OF BUILD LOG ==="
-        tail -150 full_build.log
+        # 2. Ищем ошибки в логе
+        echo "=== SEARCHING FOR ERRORS ==="
+        ERROR_LINES=$(grep -i "error\|failed\|exception\|not found\|missing" full_build.log | wc -l)
+        echo "Lines with errors: $ERROR_LINES"
         
-        # 7. Показать ошибки если есть
-        echo "=== ERRORS IN LOG ==="
-        grep -i "error\|failed\|exception\|not found" full_build.log | head -30
+        if [ $ERROR_LINES -gt 0 ]; then
+          echo "First 10 errors:"
+          grep -i "error\|failed\|exception\|not found\|missing" full_build.log | head -10
+        fi
         
-        exit $BUILD_EXIT_CODE
+        # 3. Показываем последние строки лога
+        echo "=== LAST 50 LINES OF LOG ==="
+        tail -50 full_build.log
+        
+        # 4. Проверяем создан ли APK
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "✅ APK FILE CREATED SUCCESSFULLY"
+          ls -lh bin/*.apk
+        else
+          echo "❌ NO APK FILE CREATED"
+          echo "Build failed silently. Check full_build.log for details."
+          # Завершаем с ошибкой, чтобы workflow показал проблему
+          exit 1
+        fi
+      env:
+        BUILDOZER_LOG_LEVEL: 2
+        ANDROID_SDK_ROOT: ~/android-sdk
     
-    - name: Upload build logs
-      if: always()  # Загрузить логи всегда, даже при ошибке
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          full_build.log
-          .buildozer/logs/
-    
-    - name: Upload APK if exists
-      if: steps.buildozer-run.outcome == 'success'
+    - name: Upload APK
+      if: steps.build.outcome == 'success'
       uses: actions/upload-artifact@v4
       with:
         name: android-apk
         path: bin/*.apk
+    
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-debug-log
+        path: full_build.log
