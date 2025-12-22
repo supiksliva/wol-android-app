@@ -4,20 +4,24 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
     
+    steps:
+    # 1. Получить код
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    # 2. Настроить Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
     
+    # 3. Установить системные зависимости
     - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           python3-pip \
-          build-essential \
           git \
           zip \
           unzip \
@@ -30,52 +34,29 @@ jobs:
           libncursesw5-dev \
           cmake \
           libffi-dev \
-          libssl-dev \
-          ninja-build \
-          curl \
-          unzip \
-          ccache
+          libssl-dev
     
-    - name: Install Buildozer and dependencies
+    # 4. Установить Buildozer и Cython
+    - name: Install Python dependencies
       run: |
-        pip install --upgrade pip wheel setuptools
-        pip install buildozer cython virtualenv
+        pip install --upgrade pip
+        pip install buildozer cython
     
+    # 5. Собрать APK (БЕЗ buildozer init!)
     - name: Build APK with Buildozer
       run: |
-        # Инициализация buildozer
-        buildozer init 2>/dev/null || true
+        # Очистить предыдущие сборки
+        buildozer android clean
         
-        # Собрать APK (добавляем yes для автоматического принятия лицензий)
-        yes | buildozer android debug 2>&1 | tail -100
-        
-        # Проверить результат
-        if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK успешно собран!"
-          ls -la bin/*.apk
-        else
-          echo "❌ Сборка APK не удалась"
-          exit 1
-        fi
+        # Собрать отладочную версию
+        buildozer android debug
       env:
-        # Ключевые переменные для ускорения
-        BUILD_WITH_COLORS: 1
-        USE_CCACHE: 1
-        CCACHE_DIR: /tmp/ccache
+        BUILD_WITH_COLORS: 0
     
+    # 6. Загрузить APK как артефакт
     - name: Upload APK artifact
-      if: success()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v4 
       with:
         name: wol-app-apk
         path: bin/*.apk
-        retention-days: 7
-    
-    - name: Upload build logs on failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          .buildozer/
         retention-days: 7
