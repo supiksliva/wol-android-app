@@ -1,66 +1,26 @@
 name: Build Android APK
-
 on: [push, workflow_dispatch]
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          python3-pip \
-          python3-venv \
-          git \
-          zip \
-          unzip \
-          openjdk-17-jdk \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          cmake \
-          libffi-dev \
-          libssl-dev \
-          wget \
-          unzip
-    
-    - name: Install Buildozer
-      run: |
-        pip install buildozer cython
-    
-    - name: Accept Android licenses
-      run: |
-        # Создаем папку для SDK
-        mkdir -p ~/.android
-        # Принимаем все лицензии автоматически
-        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-        # Устанавливаем необходимые компоненты
-        ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
-    
-    - name: Build APK with Buildozer
-      run: |
-        # Устанавливаем переменные для автоматического принятия лицензий
-        export ANDROID_SDK_ROOT=~/.buildozer/android/platform/android-sdk
-        yes | buildozer android debug 2>&1 | tail -100
-      env:
-        # Автоматически принимать лицензии
-        ACCEPT_ALL_LICENSES: 1
-        BUILD_WITH_COLORS: 0
-    
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: wol-apk
-        path: bin/*.apk
+      - uses: actions/checkout@v4
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            git \
+            zip \
+            unzip \
+            openjdk-17-jdk
+      - name: Install Buildozer
+        run: pip install buildozer cython
+      - name: Build APK (Accept Licenses Automatically)
+        run: |
+          # 这行命令会自动处理所有许可证提问
+          yes | buildozer android debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wol-apk
+          path: bin/*.apk
