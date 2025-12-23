@@ -81,34 +81,7 @@ jobs:
       run: |
         echo "=== CONFIGURING BUILDOZER ENVIRONMENT ==="
         
-        # Создаем глобальную конфигурацию Buildozer
-        mkdir -p ~/.buildozer
-        cat > ~/.buildozer/config.ini << EOF
-[app]
-# Пути к уже установленным компонентам
-android.sdk_path = ~/android-sdk
-android.ndk_path = ~/android-sdk/ndk/25.2.9519653
-android.ant_path = /usr/bin/ant
-
-# ОТКЛЮЧАЕМ автоскачивание - ключевая настройка!
-android.auto_sdk = False
-android.auto_ndk = False
-android.auto_ant = False
-
-# Конкретные версии
-android.sdk = 33
-android.ndk = 25.2.9519653
-android.build_tools_version = 33.0.0
-EOF
-        
-        # Создаем локальную конфигурацию
-        mkdir -p .buildozer
-        cat > .buildozer/config.ini << EOF
-[app]
-android.sdk_path = ~/android-sdk
-android.ndk_path = ~/android-sdk/ndk/25.2.9519653
-android.auto_sdk = False
-EOF
+      
         
         # Создаем симлинки чтобы Buildozer нашел наши файлы
         mkdir -p ~/.buildozer/android/platform
