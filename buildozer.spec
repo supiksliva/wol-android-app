@@ -9,15 +9,19 @@ source.include_exts = py,png,jpg,kv,atlas,json
 version = 1.0
 version.code = 1
 
-requirements = python3,kivy==2.1.0
+# Начинаем только с python3
+requirements = python3
 
-# Используем стабильные версии
+# Используем наш установленный SDK
+android.sdk_path = ~/android-sdk
+android.ndk_path = ~/android-sdk/ndk/25.2.9519653
+android.auto_sdk = 0
+android.auto_ndk = 0
+
 android.api = 33
 android.minapi = 21
-android.sdk = 33
-android.ndk = 25b
-android.ndk_api = 21
 android.archs = arm64-v8a
+android.build_tools_version = 33.0.0
 
 android.permissions = INTERNET
 
