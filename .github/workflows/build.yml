@@ -9,9 +9,9 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup Android SDK with pre-accepted licenses
+    - name: Setup Android SDK and NDK
       run: |
-        # 1. Устанавливаем системные зависимости
+        echo "=== INSTALLING SYSTEM DEPENDENCIES ==="
         sudo apt-get update
         sudo apt-get install -y \
           python3-pip \
@@ -30,75 +30,161 @@ jobs:
           libffi-dev \
           libssl-dev \
           wget \
-          unzip
+          unzip \
+          ant \
+          make
         
-        # 2. Скачиваем Android Command Line Tools
+        echo "=== DOWNLOADING ANDROID COMMAND LINE TOOLS ==="
         wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
         mkdir -p ~/android-sdk
         unzip -q commandlinetools-linux-9477386_latest.zip -d ~/android-sdk
         mv ~/android-sdk/cmdline-tools ~/android-sdk/latest
         
-        # 3. Добавляем в PATH
         echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
+        echo "ANDROID_HOME=~/android-sdk" >> $GITHUB_ENV
         echo "PATH=~/android-sdk/latest/bin:$PATH" >> $GITHUB_ENV
         
-        # 4. Автоматически принимаем ВСЕ лицензии
+        echo "=== ACCEPTING ANDROID LICENSES ==="
         mkdir -p ~/.android
         touch ~/.android/repositories.cfg
         
-        # 5. Устанавливаем необходимые компоненты С ДРУГОЙ ВЕРСИЕЙ
-        echo "y" | ~/android-sdk/latest/bin/sdkmanager --sdk_root=~/android-sdk "platform-tools" "platforms;android-33" "build-tools;30.0.3" 2>&1 | tail -20
+        # Создаем файл с принятыми лицензиями
+        mkdir -p ~/android-sdk/licenses
+        echo "8933bad161af4178b1185d1a37fbf41ea5269c55" > ~/android-sdk/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/android-sdk/licenses/android-sdk-preview-license
+        echo "d975f751698a77b662f1254ddbeed3901e976f5a" > ~/android-sdk/licenses/intel-android-extra-license
+        
+        echo "=== INSTALLING ANDROID COMPONENTS ==="
+        # Устанавливаем конкретные стабильные версии
+        ~/android-sdk/latest/bin/sdkmanager --sdk_root=~/android-sdk \
+          "platform-tools" \
+          "platforms;android-33" \
+          "build-tools;33.0.0" \
+          "ndk;25.2.9519653" \
+          "cmake;3.22.1" 2>&1 | tail -30
+        
+        echo "=== VERIFYING INSTALLATION ==="
+        echo "SDK location: ~/android-sdk"
+        ls -la ~/android-sdk/build-tools/33.0.0/aidl 2>/dev/null && echo "✅ AIDL found" || echo "❌ AIDL not found"
+        ls -la ~/android-sdk/ndk/25.2.9519653 2>/dev/null && echo "✅ NDK found" || echo "❌ NDK not found"
     
-    - name: Install Buildozer
+    - name: Install Buildozer and dependencies
       run: |
-        pip install buildozer cython
+        echo "=== INSTALLING BUILDOZER ==="
+        pip install buildozer==1.5.0 cython==0.29.36
+        
+        echo "=== CHECKING PYTHON ENVIRONMENT ==="
+        python --version
+        pip --version
     
-    - name: Configure Buildozer to use our SDK
+    - name: Configure Buildozer environment
       run: |
-        # Создаем конфиг для Buildozer
+        echo "=== CONFIGURING BUILDOZER ENVIRONMENT ==="
+        
+        # Создаем глобальную конфигурацию Buildozer
         mkdir -p ~/.buildozer
-        echo "[app]" > ~/.buildozer/config.ini
-        echo "android.sdk_path = ~/android-sdk" >> ~/.buildozer/config.ini
+        cat > ~/.buildozer/config.ini << EOF
+[app]
+# Пути к уже установленным компонентам
+android.sdk_path = ~/android-sdk
+android.ndk_path = ~/android-sdk/ndk/25.2.9519653
+android.ant_path = /usr/bin/ant
+
+# ОТКЛЮЧАЕМ автоскачивание - ключевая настройка!
+android.auto_sdk = False
+android.auto_ndk = False
+android.auto_ant = False
+
+# Конкретные версии
+android.sdk = 33
+android.ndk = 25.2.9519653
+android.build_tools_version = 33.0.0
+EOF
+        
+        # Создаем локальную конфигурацию
+        mkdir -p .buildozer
+        cat > .buildozer/config.ini << EOF
+[app]
+android.sdk_path = ~/android-sdk
+android.ndk_path = ~/android-sdk/ndk/25.2.9519653
+android.auto_sdk = False
+EOF
+        
+        # Создаем симлинки чтобы Buildozer нашел наши файлы
+        mkdir -p ~/.buildozer/android/platform
+        ln -sf ~/android-sdk ~/.buildozer/android/platform/android-sdk 2>/dev/null || true
+        
+        echo "=== ENVIRONMENT VARIABLES ==="
+        echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+        echo "ANDROID_NDK_HOME: $ANDROID_SDK_ROOT/ndk/25.2.9519653"
     
-    - name: Build APK with verification
+    - name: Build APK with Buildozer
       id: build-step
       run: |
-        # Ключевая строка: используем --yes для автоматического принятия
-        buildozer android debug --yes 2>&1 | tee build.log
+        echo "=== STARTING APK BUILD PROCESS ==="
         
-        # Проверяем создался ли APK файл
-        echo "=== CHECKING FOR APK FILE ==="
+        # Устанавливаем критические переменные окружения
+        export ANDROID_SDK_ROOT=~/android-sdk
+        export ANDROID_NDK_HOME=~/android-sdk/ndk/25.2.9519653
+        export ANDROID_HOME=~/android-sdk
+        export PATH=~/android-sdk/platform-tools:~/android-sdk/build-tools/33.0.0:$PATH
+        
+        echo "Current PATH: $PATH"
+        echo "Checking aidl:"
+        which aidl || echo "aidl not in PATH"
+        ls -la ~/android-sdk/build-tools/33.0.0/aidl 2>/dev/null || echo "aidl not found in SDK"
+        
+        # Очищаем предыдущие сборки
+        rm -rf .buildozer bin 2>/dev/null || true
+        
+        echo "=== RUNNING BUILDOZER ==="
+        # Запускаем Buildozer с максимальным логгированием
+        buildozer android debug 2>&1 | tee full_build.log
+        
+        BUILD_EXIT_CODE=${PIPESTATUS[0]}
+        echo "Buildozer exit code: $BUILD_EXIT_CODE"
+        
+        echo "=== ANALYZING BUILD RESULTS ==="
+        
+        # Проверяем создался ли APK
         if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK file created successfully"
-          echo "APK file:"
+          echo "✅ SUCCESS: APK file created!"
+          echo "APK details:"
           ls -la bin/*.apk
           echo "apk_exists=true" >> $GITHUB_OUTPUT
+          echo "apk_path=bin" >> $GITHUB_OUTPUT
         else
-          echo "❌ ERROR: APK file NOT created!"
-          echo "=== SHOWING BUILD ERRORS ==="
-          # Ищем ошибки в логе
-          grep -i "error\|failed\|not found\|missing\|rejected" build.log | head -20
-          echo "=== LAST 30 LINES OF LOG ==="
-          tail -30 build.log
+          echo "❌ FAILURE: APK file NOT created!"
+          echo "=== SHOWING CRITICAL ERRORS ==="
+          grep -i "error\|failed\|not found\|missing\|rejected\|download\|license" full_build.log | head -30
+          echo "=== LAST 50 LINES OF LOG ==="
+          tail -50 full_build.log
+          echo "=== CHECKING DIRECTORY STRUCTURE ==="
+          find . -name "*.apk" -type f 2>/dev/null
+          ls -la .buildozer/ 2>/dev/null || echo ".buildozer not found"
           echo "apk_exists=false" >> $GITHUB_OUTPUT
-          exit 1  # Завершаем с ошибкой
+          exit 1
         fi
       env:
-        # Форсируем принятие лицензий
-        ACCEPT_ALL_ANDROID_LICENSES: 1
-        ANDROID_SDK_ROOT: ~/android-sdk
-        BUILD_WITH_COLORS: 0
+        # Критические переменные для отключения автоскачивания
+        BUILDOZER_DISABLE_AUTO_SDK: 1
+        BUILDOZER_DISABLE_AUTO_NDK: 1
+        BUILDOZER_LOG_LEVEL: 2
     
-    - name: Upload APK
+    - name: Upload APK artifact
       if: steps.build-step.outputs.apk_exists == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: wol-android-apk
+        name: wol-android-app
         path: bin/*.apk
+        retention-days: 30
     
-    - name: Upload build log on failure
+    - name: Upload build logs on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: build-failure-log
-        path: build.log
+        name: build-debug-logs
+        path: |
+          full_build.log
+          .buildozer/logs/
+        retention-days: 7
